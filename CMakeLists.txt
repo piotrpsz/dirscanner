@@ -1,0 +1,19 @@
+cmake_minimum_required(VERSION 3.26)
+project(dirscanner)
+
+set(CMAKE_CXX_STANDARD 20)
+find_package(range-v3 REQUIRED)
+find_package(TBB REQUIRED)
+find_package(fmt REQUIRED)
+find_package(Threads REQUIRED)
+find_package(date REQUIRED)
+
+add_executable(dirscanner main.cpp)
+
+target_link_libraries(dirscanner PUBLIC
+        fmt::fmt
+        Threads::Threads
+        date::date date::date-tz
+        TBB::tbb TBB::tbbmalloc TBB::tbbmalloc_proxy
+        range-v3::meta range-v3::concepts range-v3::range-v3
+)
