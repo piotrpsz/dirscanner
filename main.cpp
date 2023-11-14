@@ -2,34 +2,64 @@
 #include <tbb/tbb.h>
 #include <filesystem>
 #include <string>
+#include "share/share.h"
+#include <fmt/core.h>
+#include <unistd.h>
 namespace fs = std::filesystem;
 
 tbb::task_group tg;
 
 bool is_readable(fs::file_status status) noexcept {
-    std::error_code err{};
-    auto perms = status.permissions();
-    return  (perms & fs::perms::owner_read) != fs::perms::none &&
-            (perms & fs::perms::group_read) != fs::perms::none &&
-            (perms & fs::perms::others_read) != fs::perms::none;
+    try {
+        auto perms = status.permissions();
+        return ((perms & fs::perms::owner_read) != fs::perms::none) && ((perms & fs::perms::owner_exec) != fs::perms::none);
+//            (perms & fs::perms::group_read) != fs::perms::none &&
+//            (perms & fs::perms::others_read) != fs::perms::none;
+    }
+    catch (...) {
+        return false;
+    }
 }
 
-void read_dir_content(int level, fs::path fpath) {
-    std::string prefix(2 * level, ' ');
+bool is_ok(std::string const& fpath) noexcept {
+    if (access(fpath.c_str(), R_OK) == 0)
+        return access(fpath.c_str(), X_OK) == 0;
+    return false;
+}
 
-  for (fs::directory_iterator pos{fpath}; pos != fs::directory_iterator{}; ++pos) {
-      try {
+void parse_file(fs::path fp) {
+    if (auto path = fp.lexically_normal().string(); !share::trim(path).empty()) {
+        std::cout << fmt::format("{}\n", path) << std::flush;
+//        std::cout << fmt::format("|{} | {}|\n", fp.filename().string(), fp.extension().string()) << std::flush;
+    }
+}
+
+void read_dir_content(fs::path fp) noexcept {
+//    if (!is_readable(status(fp))) return;
+    if (!is_ok(fp)) return;
+    std::error_code ec;
+
+  for (fs::directory_iterator pos{fp, ec}; pos != fs::directory_iterator{}; ++pos) {
+//      try {
           auto e = pos->path();
-          std::cout << prefix << e.lexically_normal().string();
           if (is_regular_file(e)) {
-              std::cout << " ...file\n";
-          } else if (is_directory(e)) {
-              read_dir_content(level + 1, e);
+              tg.run([e] {
+                  parse_file(e);
+              });
           }
-      }
-      catch (fs::filesystem_error const& err) {
-          std::cerr << err.what() << " - " << err.path1().string() << '\n';
-      }
+          else if (is_directory(e)) {
+              if (auto const dir = fp / e; is_ok(dir) && dir.filename().string()[0] != '.')
+                tg.run([dir] {
+                    read_dir_content(dir);
+                });
+          }
+
+//          ++pos;
+//      }
+//      catch (fs::filesystem_error const& err) {
+////          std::cerr << err.what() << " - " << err.path1().string() << '\n';
+//      }
+//      catch (...) {}
   }
 
 }
@@ -38,9 +68,13 @@ int main() {
     fs::path fpath{"/"};
 
     tg.run([fpath] {
-        read_dir_content(0, fpath);
+        read_dir_content(fpath);
     });
-    tg.wait();
+
+    auto dt = share::execution_timer([&] {
+        tg.wait();
+    }, 1);
+    std::cout << dt << '\n';
 
     return 0;
 }
