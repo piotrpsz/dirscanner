@@ -1,3 +1,6 @@
 [submodule "share"]
 	path = share
 	url = https://github.com/piotrpsz/share.git
+[submodule "clap"]
+	path = clap
+	url = https://github.com/piotrpsz/clap.git

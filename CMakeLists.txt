@@ -10,6 +10,7 @@ find_package(date REQUIRED)
 
 add_executable(dirscanner main.cpp)
 add_subdirectory(share)
+add_subdirectory(clap)
 
 target_link_libraries(dirscanner PUBLIC
         fmt::fmt
@@ -18,4 +19,5 @@ target_link_libraries(dirscanner PUBLIC
         TBB::tbb TBB::tbbmalloc TBB::tbbmalloc_proxy
         range-v3::meta range-v3::concepts range-v3::range-v3
         share
+        clap
 )
