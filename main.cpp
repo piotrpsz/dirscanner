@@ -8,12 +8,12 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <atomic>
-#include <vector>
 #include <regex>
-#include <cstddef>
 #include <system_error>
 #include <optional>
 #include <variant>
+#include <fstream>
+#include <sstream>
 #include "clap/clap.h"
 
 namespace fs = std::filesystem;
@@ -23,15 +23,20 @@ std::atomic_uint64_t total_dir_counter{};
 std::atomic_uint64_t total_file_counter{};
 std::atomic_uint64_t matched_dir_counter{};
 std::atomic_uint64_t matched_file_counter{};
+std::regex rgx_dir, rgx_file;
+std::optional<std::regex> rgx_text{};
+
+auto quiet{false};
 
 auto clap = Clap("dirscanner v. 0.1",
                  Arg()
                     .marker("-i")
                     .promarker("--icase")
-                    .ordef(false),
+                    .help("regex with ignore case"),
                  Arg()
                     .marker("-r")
-                    .promarker("--recursive"),
+                    .promarker("--recursive")
+                    .help("recursive scan"),
                  Arg()
                     .marker("-d")
                     .promarker("--dir"),
@@ -41,6 +46,16 @@ auto clap = Clap("dirscanner v. 0.1",
                  Arg()
                     .marker("-n")
                     .promarker("--name")
+                    .help("file/directory name"),
+                 Arg()
+                    .marker("-w")
+                    .help("regex with word boundaries"),
+                 Arg()
+                    .marker("-e")
+                    .promarker("--ext"),
+                    Arg()
+                    .marker("-q")
+                    .promarker("--quiet")
 );
 
 bool is_readable(fs::file_status status) noexcept {
@@ -61,18 +76,31 @@ bool is_ok(std::string const& fpath) noexcept {
     return false;
 }
 
-void parse_file(fs::path fp) {
-    if (auto path = fp.lexically_normal().string(); !share::trim(path).empty()) {
-        std::cout << fmt::format("{}\n", path) << std::flush;
-//        std::cout << fmt::format("|{} | {}|\n", fp.filename().string(), fp.extension().string()) << std::flush;
+bool parse_file(std::string const& fp) {
+    std::ifstream f;
+    f.open(fp);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    std::string str = ss.str();
+    f.close();
+
+    if (rgx_text) {
+        auto const rgx = *rgx_text;
+        std::smatch smatch;
+
+        if (std::regex_search(str, smatch, rgx) && smatch[0].matched) {
+            fmt::print("{}\n", fp);
+            return true;
+        }
     }
+    return false;
 }
 
 bool ends_with(std::string const& text, char c) {
     return *std::prev(std::end(text)) == c;
 }
 
-void iterate_dir(std::string const& dir, std::regex const& rgx) noexcept {
+void iterate_dir(std::string const& dir) noexcept {
     total_dir_counter++;
     if (auto dirp = opendir(dir.c_str()); dirp) {
         auto* entry_prev = reinterpret_cast<struct dirent*>(malloc(offsetof(struct dirent, d_name) + NAME_MAX + 1));
@@ -98,24 +126,27 @@ void iterate_dir(std::string const& dir, std::regex const& rgx) noexcept {
             if (0 == lstat(fp.c_str(), &fstat)) {
                 if ((fstat.st_mode & S_IFREG) == S_IFREG) {
                     // Perform in a dedicated tbb-task
-                    tg.run([fp, rgx] {
+                    tg.run([fp] {
                         total_file_counter++;
                         std::smatch smatch;
-                        if (std::regex_search(fp, smatch, rgx) && smatch[0].matched) {
+                        if (std::regex_search(fp, smatch, rgx_file) && smatch[0].matched) {
                             matched_file_counter++;
-                            fmt::print("{}\n", fp);
+                            parse_file(fp);
+//                            fmt::print("{}\n", fp);
                         }
                     });
                 }
                 else if ((fstat.st_mode & S_IFDIR) == S_IFDIR) {
                     // Perform in a dedicated tbb-task
-                    tg.run([fp, rgx] {
+                    tg.run([fp] {
                         std::smatch smatch;
-                        if (std::regex_search(fp, smatch, rgx) && smatch[0].matched) {
+                        if (std::regex_search(fp, smatch, rgx_dir) && smatch[0].matched) {
                             matched_dir_counter++;
-                            fmt::print("{}\n", fp);
+                            if (!quiet)
+                                fmt::print("{}\n", fp);
                         }
-                        iterate_dir(fp, rgx);
+                        iterate_dir(fp);
+
                     });
                 }
             }
@@ -126,78 +157,96 @@ void iterate_dir(std::string const& dir, std::regex const& rgx) noexcept {
 
 int main(int argn, char* argv[]) {
     clap.parse(argn, argv);
-//    std::cout << clap << '\n';
-//    return 0;
-/*
-    std::string text = R"(
-#include <vector>
-namespace fs = std::filesystem;
 
-tbb::task_group tg;
-std::atomic_uint64_t dir_counter{};
-std::atomic_uint64_t file_counter{};
-
-bool is_readable(fs::file_status status) noexcept {}
-
-int Main(char** argc, int argn) {}
-
-avbrewer
-
-)";
-*/
-
-//    auto expr = R"(\b(main)\S*(\(.*\))\S*)";
-//    auto expr = R"(\b(.*)\b(main)\b(\(.*\)))";
-
-//    auto expr = R"((brew))";
-//    std::regex rgx(expr, std::regex_constants::ECMAScript | std::regex_constants::icase);
-//    std::smatch smatch;
-//    if (std::regex_search(text, smatch, rgx)) {
-//        std::cout << "OK\n";
-//        auto s0 = smatch[0];
-//        auto pos = smatch.position();
-//
-//        std::cout << smatch[0] << "  => (" << pos << ")" << '\n';
-//        std::cout << smatch[1] << '\n';
-//        std::cout << smatch[2] << "  => (" << (std::distance(smatch[1].first, smatch[2].first)) << ")" <<'\n';
-//    }
-//    else {
-//        std::cout << "nie znaleziono\n";
-//    }
-//
-//    return 0;
-
-
-//    fs::path fpath{"/Users/piotr"};
-    fs::path fpath{"/"};
-    auto expr = R"(\b(Brew)\b)";
+    auto word_boundary{false};
+    auto ignore_case{false};
     std::string name{};
+    std::string extension{};
+    std::string text{};
+    std::string fpath{};
 
-    auto rgx_flags = std::regex_constants::ECMAScript;
+    // fetch directory
+    if (auto arg = clap["--dir"]; arg)
+        if (auto value = std::get_if<std::string>(&arg->value()); value) {
+            auto const tmp = *value;
+            fpath = tmp.substr(1, tmp.size() - 2);
+        }
 
+    // during operation, regex runs in ignore case mode
     if (auto arg = clap["--icase"]; arg)
         if (auto flag = std::get_if<bool>(&arg->value()); flag)
-            if (*flag)
-                rgx_flags |= std::regex_constants::icase;
+            ignore_case = *flag;
 
+    // search for a file/directory that contains 'name' in its name
     if (auto arg = clap["--name"]; arg)
-        if (auto value = std::get_if<std::string>(&arg->value()); value)
-            name = *value;
+        if (auto value = std::get_if<std::string>(&arg->value()); value) {
+            auto const tmp = *value;
+            name = tmp.substr(1, tmp.size() - 2);
+        }
 
-    fmt::print("name: {}\n", name);
+    // regex searches for text at a word boundary
+    if (auto arg = clap["-w"]; arg)
+        if (auto value = std::get_if<bool>(&arg->value()); value)
+            word_boundary = *value;
 
-    std::regex rgx(expr, rgx_flags);
+    // don't display directories and files
+    if (auto arg = clap["--quiet"]; arg)
+        if (auto value = std::get_if<bool>(&arg->value()); value)
+            quiet = *value;
 
-    tg.run([fpath, rgx] {
-        iterate_dir(fpath, rgx);
+    // file extension
+    if (auto arg = clap["--ext"]; arg)
+        if (auto value = std::get_if<std::string>(&arg->value()); value) {
+            auto const tmp = *value;
+            extension = tmp.substr(1, tmp.size() - 2);
+        }
+
+    // text to search in file
+    if (auto arg = clap["--text"]; arg)
+        if (auto value = std::get_if<std::string>(&arg->value()); value) {
+            auto tmp = *value;
+            text = tmp.substr(1, tmp.size() - 2);
+        }
+
+    std::string express_dir{};
+    if (!name.empty())
+        express_dir = word_boundary ? fmt::format("\\b{}\\b", name) : name;
+    auto express_file = express_dir;
+    if (!extension.empty())
+        express_file += fmt::format("\\w*\\.({})$", extension);
+
+    fmt::print("------- settings --------------------------------\n");
+    fmt::print("file/directory name provided: {}\n", name);
+    fmt::print("              file extension: {}\n", extension);
+    fmt::print("                        text: {}\n", text);
+    fmt::print("                 ignore case: {}\n", ignore_case);
+    fmt::print("             word boundaries: {}\n", word_boundary);
+    fmt::print("                       quiet: {}\n", quiet);
+    fmt::print("-------------------------------------------------\n");
+
+    auto rgx_flags = std::regex_constants::ECMAScript;
+    if (ignore_case)
+        rgx_flags |= std::regex_constants::icase;
+
+    rgx_dir = std::regex(express_dir, rgx_flags);
+    rgx_file = std::regex(express_file, rgx_flags);
+    if (!text.empty()) {
+        auto pattern = fmt::format("\\b{}\\b", text);
+        fmt::print("{}\n", pattern);
+        rgx_text = std::regex(pattern, rgx_flags);
+    }
+
+    tg.run([fpath] {
+        iterate_dir(fpath);
     });
 
     auto dt = share::execution_timer([&] {
         tg.wait();
     }, 1);
-    std::cout << dt << '\n';
-    fmt::print("  dir total: {}, matched: {}\n", share::number2str(total_dir_counter.load()), share::number2str(matched_dir_counter.load()));
-    fmt::print("files total: {}, matched: {}\n", share::number2str(total_file_counter.load()), share::number2str(matched_file_counter.load()));
+
+    fmt::print("\nexecution time: {}\n", dt);
+    fmt::print("     dir total: {}, matched: {}\n", share::number2str(total_dir_counter.load()), share::number2str(matched_dir_counter.load()));
+    fmt::print("   files total: {}, matched: {}\n", share::number2str(total_file_counter.load()), share::number2str(matched_file_counter.load()));
 
     return 0;
 }
