@@ -114,17 +114,16 @@ bool parse_file2(std::string const& fp) noexcept {
 }
 
 bool parse_file(std::string const& fp) {
-    std::ifstream f;
-    f.open(fp);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    std::string str = ss.str();
-    f.close();
-
     if (rgx_text) {
-        auto const rgx = *rgx_text;
+        std::ifstream f;
+        f.open(fp);
+        std::stringstream ss;
+        ss << f.rdbuf();
+        std::string str = ss.str();
+        f.close();
+
         std::smatch smatch;
-        if (std::regex_search(str, smatch, rgx) && smatch[0].matched) {
+        if (std::regex_search(str, smatch, *rgx_text) && smatch[0].matched) {
             fmt::print("{}\n", fp);
             return true;
         }
