@@ -21,7 +21,7 @@ execution time: 45.249340667000006s
 To install the TBB library on macOS: 
 <ul>
     <li>brew update</li>
-    <li>brew install tbb<\li>
+    <li>brew install tbb</li>
 </ul>
 
 I use two of my libraries in the program: share and clap.<br>
