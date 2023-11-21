@@ -24,7 +24,7 @@ To install the TBB library on macOS:
     <li>brew install tbb</li>
 </ul>
 
-I use two of my libraries in the program: share and clap.<br>
+I use two of my libraries in the program: 'share' and 'clap'.<br>
 To add them to your project you need to add them as submodules (when git is already initialized in your project):
 <ul>
     <li>git submodule add https://github.com/piotrpsz/share.git</li>
