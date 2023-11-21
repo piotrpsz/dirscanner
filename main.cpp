@@ -34,8 +34,6 @@
 #include <sstream>
 #include "clap/clap.h"
 
-namespace fs = std::filesystem;
-
 tbb::task_group tg;
 std::atomic_uint64_t total_dir_counter{};
 std::atomic_uint64_t total_file_counter{};
