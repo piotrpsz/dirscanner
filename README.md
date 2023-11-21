@@ -33,3 +33,5 @@ To add them to your project you need to add them as submodules (when git is alre
 <br>
 The program runs on macOS and should run on Linux. It almost certainly doesn't work on Windows.
 
+## Example of use
+./dirscanner -wq --dir '/Users/piotr' --text 'filesystem' -e 'cpp|h'

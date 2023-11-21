@@ -7,7 +7,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif ()
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-Og")
-set(CMAKE_CXX_FLAGS_RELEASE "-Ofast")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 find_package(range-v3 REQUIRED)
 find_package(TBB REQUIRED)

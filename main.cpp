@@ -154,6 +154,11 @@ void iterate_dir(std::string const& dir) noexcept {
     }
 }
 
+std::string strip_str(std::string text) noexcept {
+    if (text[0] == '\'' && text[text.size() - 1] == '\'')
+        return text.substr(1, text.size() -2);
+    return text;
+}
 int main(int argn, char* argv[]) {
     clap.parse(argn, argv);
 
@@ -166,10 +171,8 @@ int main(int argn, char* argv[]) {
 
     // fetch directory
     if (auto arg = clap["--dir"]; arg)
-        if (auto value = std::get_if<std::string>(&arg->value()); value) {
-            auto const tmp = *value;
-            fpath = tmp.substr(1, tmp.size() - 2);
-        }
+        if (auto value = std::get_if<std::string>(&arg->value()); value)
+            fpath = strip_str(*value);
 
     // during operation, regex runs in ignore case mode
     if (auto arg = clap["--icase"]; arg)
@@ -178,10 +181,8 @@ int main(int argn, char* argv[]) {
 
     // search for a file/directory that contains 'name' in its name
     if (auto arg = clap["--name"]; arg)
-        if (auto value = std::get_if<std::string>(&arg->value()); value) {
-            auto const tmp = *value;
-            name = tmp.substr(1, tmp.size() - 2);
-        }
+        if (auto value = std::get_if<std::string>(&arg->value()); value)
+            name = strip_str(*value);
 
     // regex searches for text at a word boundary
     if (auto arg = clap["-w"]; arg)
@@ -195,17 +196,13 @@ int main(int argn, char* argv[]) {
 
     // file extension
     if (auto arg = clap["--ext"]; arg)
-        if (auto value = std::get_if<std::string>(&arg->value()); value) {
-            auto const tmp = *value;
-            extension = tmp.substr(1, tmp.size() - 2);
-        }
+        if (auto value = std::get_if<std::string>(&arg->value()); value)
+            extension = strip_str(*value);
 
     // text to search in file
     if (auto arg = clap["--text"]; arg)
-        if (auto value = std::get_if<std::string>(&arg->value()); value) {
-            auto tmp = *value;
-            text = tmp.substr(1, tmp.size() - 2);
-        }
+        if (auto value = std::get_if<std::string>(&arg->value()); value)
+            text = strip_str(*value);
 
     std::string express_dir{};
     if (!name.empty())
@@ -215,6 +212,7 @@ int main(int argn, char* argv[]) {
         express_file += fmt::format("\\w*\\.({})$", extension);
 
     fmt::print("------- settings --------------------------------\n");
+    fmt::print("                 initial dir: {}\n", fpath);
     fmt::print("file/directory name provided: {}\n", name);
     fmt::print("              file extension: {}\n", extension);
     fmt::print("                        text: {}\n", text);
