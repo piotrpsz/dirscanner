@@ -30,5 +30,6 @@ To add them to your project you need to add them as submodules (when git is alre
     <li>git submodule add https://github.com/piotrpsz/share.git</li>
     <li>git submodule add https://github.com/piotrpsz/clap.git</li>
 </ul>
+<br>
 The program runs on macOS and should run on Linux. It almost certainly doesn't work on Windows.
 
