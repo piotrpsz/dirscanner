@@ -25,6 +25,8 @@
 #include <fmt/core.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 #include <atomic>
 #include <regex>
 #include <system_error>
@@ -33,6 +35,7 @@
 #include <fstream>
 #include <sstream>
 #include "clap/clap.h"
+#include "pointer_wrapper.h"
 
 tbb::task_group tg;
 std::atomic_uint64_t total_dir_counter{};
@@ -74,6 +77,42 @@ auto clap = Clap("dirscanner v. 0.1",
                     .promarker("--quiet")
 );
 
+/// Parsing a file without reading it, we use file-to-memory mapping.
+bool parse_file2(std::string const& fp) noexcept {
+    if (auto fd = open(fp.c_str(), O_RDONLY); fd != -1) {
+        struct stat sb{};
+        if (fstat(fd, &sb) != -1 && sb.st_size > 0) {
+            char* addr = reinterpret_cast<char*>(mmap(nullptr, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
+            if (addr == MAP_FAILED) {
+                auto const err = std::make_error_code(std::errc{errno});
+                fmt::print(stderr, "Can't map file to memory: {} ({}) {}\n", err.message(), err.value(), fp);
+                return false;
+            }
+
+            if (rgx_text) {
+                auto const rgx = *rgx_text;
+                std::smatch smatch;
+                std::string const& str = addr;
+                // TODO: second copy of data (not efficient in every aspect)
+//                std::pmr::string text{addr, uint64_t(sb.st_size)};
+                // TODO: how to run regex with iterators/pointers to maped memory area
+                // mapping works, but now we have two copies of data,
+                // pmr doesn't help at all (or I'm doing something wrong)
+                if (std::regex_search(str, smatch, rgx) && smatch[0].matched) {
+                    fmt::print("{}\n", fp);
+                    return true;
+                }
+            }
+
+            if (munmap(reinterpret_cast<void*>(addr), sb.st_size) == -1) {
+                auto const err = std::make_error_code(std::errc{errno});
+                fmt::print(stderr, "Can't unmap file to memory.: {} ({})\n", err.message(), err.value());
+            }
+        }
+    }
+    return false;
+}
+
 bool parse_file(std::string const& fp) {
     std::ifstream f;
     f.open(fp);
@@ -85,7 +124,6 @@ bool parse_file(std::string const& fp) {
     if (rgx_text) {
         auto const rgx = *rgx_text;
         std::smatch smatch;
-
         if (std::regex_search(str, smatch, rgx) && smatch[0].matched) {
             fmt::print("{}\n", fp);
             return true;

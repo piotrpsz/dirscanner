@@ -15,7 +15,8 @@ find_package(fmt REQUIRED)
 find_package(Threads REQUIRED)
 find_package(date REQUIRED)
 
-add_executable(dirscanner main.cpp)
+add_executable(dirscanner main.cpp
+        pointer_wrapper.h)
 add_subdirectory(share)
 add_subdirectory(clap)
 
