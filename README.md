@@ -34,4 +34,6 @@ To add them to your project you need to add them as submodules (when git is alre
 The program runs on macOS and should run on Linux. It almost certainly doesn't work on Windows.
 
 ## Example of use
-./dirscanner -wq --dir '/Users/piotr' --text 'filesystem' -e 'cpp|h'
+./dirscanner -wq --dir '/Users/piotr' --text 'filesystem' -e 'cpp|h'<br>
+
+For more information on passing parameters to the program, see my 'clap' library.
