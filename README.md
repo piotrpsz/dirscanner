@@ -17,3 +17,18 @@ Parallel scanning (in dedicated tbb-tasks) takes:
 execution time: 45.249340667000006s
 ```
 (Of course, results will be different on different computers.)
+
+To install the TBB library on macOS: 
+<ul>
+    <li>brew update</li>
+    <li>brew install tbb<\li>
+</ul>
+
+I use two of my libraries in the program: share and clap.<br>
+To add them to your project you need to add them as submodules (when git is already initialized in your project):
+<ul>
+    <li>git submodule add https://github.com/piotrpsz/share.git</li>
+    <li>git submodule add https://github.com/piotrpsz/clap.git</li>
+</ul>
+The program runs on macOS and should run on Linux. It almost certainly doesn't work on Windows.
+
