@@ -1,10 +1,28 @@
-#include <iostream>
+// MIT License
+//
+// Copyright (c) 2023 Piotr Pszczółkowski
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 #include <tbb/tbb.h>
-#include <filesystem>
 #include <string>
 #include "share/share.h"
 #include <fmt/core.h>
-#include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <atomic>
@@ -57,24 +75,6 @@ auto clap = Clap("dirscanner v. 0.1",
                     .marker("-q")
                     .promarker("--quiet")
 );
-
-bool is_readable(fs::file_status status) noexcept {
-    try {
-        auto perms = status.permissions();
-        return ((perms & fs::perms::owner_read) != fs::perms::none) && ((perms & fs::perms::owner_exec) != fs::perms::none);
-//            (perms & fs::perms::group_read) != fs::perms::none &&
-//            (perms & fs::perms::others_read) != fs::perms::none;
-    }
-    catch (...) {
-        return false;
-    }
-}
-
-bool is_ok(std::string const& fpath) noexcept {
-    if (access(fpath.c_str(), R_OK) == 0)
-        return access(fpath.c_str(), X_OK) == 0;
-    return false;
-}
 
 bool parse_file(std::string const& fp) {
     std::ifstream f;
@@ -131,8 +131,10 @@ void iterate_dir(std::string const& dir) noexcept {
                         std::smatch smatch;
                         if (std::regex_search(fp, smatch, rgx_file) && smatch[0].matched) {
                             matched_file_counter++;
-                            parse_file(fp);
-//                            fmt::print("{}\n", fp);
+                            if (parse_file(fp))
+                                return; // return from task
+                            if (!quiet)
+                                fmt::print("{}\n", fp);
                         }
                     });
                 }
@@ -146,7 +148,6 @@ void iterate_dir(std::string const& dir) noexcept {
                                 fmt::print("{}\n", fp);
                         }
                         iterate_dir(fp);
-
                     });
                 }
             }
@@ -232,7 +233,7 @@ int main(int argn, char* argv[]) {
     rgx_file = std::regex(express_file, rgx_flags);
     if (!text.empty()) {
         auto pattern = fmt::format("\\b{}\\b", text);
-        fmt::print("{}\n", pattern);
+//        fmt::print("{}\n", pattern);
         rgx_text = std::regex(pattern, rgx_flags);
     }
 
