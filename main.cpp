@@ -34,8 +34,9 @@
 #include <variant>
 #include <fstream>
 #include <sstream>
+#include <memory>
 #include "clap/clap.h"
-#include "pointer_wrapper.h"
+#include "pcregex.h"
 
 tbb::task_group tg;
 std::atomic_uint64_t total_dir_counter{};
@@ -44,6 +45,10 @@ std::atomic_uint64_t matched_dir_counter{};
 std::atomic_uint64_t matched_file_counter{};
 std::regex rgx_dir, rgx_file;
 std::optional<std::regex> rgx_text{};
+
+std::string pattern_dir{};
+std::string pattern_file{};
+
 
 auto quiet{false};
 
@@ -79,6 +84,11 @@ auto clap = Clap("dirscanner v. 0.1",
 
 /// Parsing a file without reading it, we use file-to-memory mapping.
 bool parse_file2(std::string const& fp) noexcept {
+    return false;
+
+    if (!rgx_text)
+        return false;
+
     if (auto fd = open(fp.c_str(), O_RDONLY); fd != -1) {
         struct stat sb{};
         if (fstat(fd, &sb) != -1 && sb.st_size > 0) {
@@ -89,10 +99,9 @@ bool parse_file2(std::string const& fp) noexcept {
                 return false;
             }
 
-            if (rgx_text) {
-                auto const rgx = *rgx_text;
-                std::smatch smatch;
-                std::string const& str = addr;
+            auto const rgx = *rgx_text;
+            std::smatch smatch;
+            std::string const& str = addr;
                 // TODO: second copy of data (not efficient in every aspect)
 //                std::pmr::string text{addr, uint64_t(sb.st_size)};
                 // TODO: how to run regex with iterators/pointers to maped memory area
@@ -102,7 +111,7 @@ bool parse_file2(std::string const& fp) noexcept {
                     fmt::print("{}\n", fp);
                     return true;
                 }
-            }
+//            }
 
             if (munmap(reinterpret_cast<void*>(addr), sb.st_size) == -1) {
                 auto const err = std::make_error_code(std::errc{errno});
@@ -166,7 +175,7 @@ void iterate_dir(std::string const& dir) noexcept {
                         std::smatch smatch;
                         if (std::regex_search(fp, smatch, rgx_file) && smatch[0].matched) {
                             matched_file_counter++;
-                            if (parse_file(fp))
+                            if (parse_file2(fp))
                                 return; // return from task
                             if (!quiet)
                                 fmt::print("{}\n", fp);
@@ -191,11 +200,69 @@ void iterate_dir(std::string const& dir) noexcept {
     }
 }
 
+void iterate_dir2(std::string const& dir) noexcept {
+    total_dir_counter++;
+    if (auto dirp = opendir(dir.c_str()); dirp) {
+        auto* entry_prev = reinterpret_cast<struct dirent*>(malloc(offsetof(struct dirent, d_name) + NAME_MAX + 1));
+        struct dirent* entry;
+
+        for (;;) {
+            if (readdir_r(dirp, entry_prev, &entry) != 0) {
+                auto const err = std::make_error_code(std::errc{errno});
+                fmt::print(stderr, "({}) {}\n", err.value(), err.message());
+                break;
+            }
+            if (!entry) break;
+
+            std::string name{entry->d_name};
+            // no hidden, no . (current) and no .. (parent)
+            if (name[0] == '.') continue;
+
+            auto fp{dir};
+            if (!ends_with(fp, '/')) fp.append("/");
+            fp = fp.append(name);
+
+            struct stat fstat{};
+            if (0 == lstat(fp.c_str(), &fstat)) {
+                if ((fstat.st_mode & S_IFREG) == S_IFREG) {
+                    // Perform in a dedicated tbb-task
+                    tg.run([fp] {
+//                        fmt::print("{}\n", fp);
+                        total_file_counter++;
+                        Regex rgx{pattern_file.c_str()};
+                        if (auto rs = rgx.run(fp.c_str(), fp.size()); !rs.empty()) {
+                            matched_file_counter++;
+//                            if (parse_file2(fp))
+//                                return; // return from task
+                            if (!quiet)
+                                fmt::print("{}\n", fp);
+                        }
+                    });
+                }
+                else if ((fstat.st_mode & S_IFDIR) == S_IFDIR) {
+                    // Perform in a dedicated tbb-task
+                    tg.run([fp] {
+                        Regex rgx{pattern_dir.c_str()};
+                        if (auto rs = rgx.run(fp.c_str(), fp.size()); !rs.empty()) {
+                            matched_dir_counter++;
+                            if (!quiet)
+                                fmt::print("{}\n", fp);
+                        }
+                        iterate_dir2(fp);
+                    });
+                }
+            }
+        }
+        closedir(dirp);
+    }
+}
+
 std::string strip_str(std::string text) noexcept {
     if (text[0] == '\'' && text[text.size() - 1] == '\'')
         return text.substr(1, text.size() -2);
     return text;
 }
+
 int main(int argn, char* argv[]) {
     clap.parse(argn, argv);
 
@@ -243,7 +310,7 @@ int main(int argn, char* argv[]) {
 
     std::string express_dir{};
     if (!name.empty())
-        express_dir = word_boundary ? fmt::format("\\b{}\\b", name) : name;
+        express_dir = word_boundary ? fmt::format("\\b({})\\b", name) : name;
     auto express_file = express_dir;
     if (!extension.empty())
         express_file += fmt::format("\\w*\\.({})$", extension);
@@ -258,20 +325,32 @@ int main(int argn, char* argv[]) {
     fmt::print("                       quiet: {}\n", quiet);
     fmt::print("-------------------------------------------------\n");
 
-    auto rgx_flags = std::regex_constants::ECMAScript;
-    if (ignore_case)
-        rgx_flags |= std::regex_constants::icase;
-
-    rgx_dir = std::regex(express_dir, rgx_flags);
-    rgx_file = std::regex(express_file, rgx_flags);
-    if (!text.empty()) {
-        auto pattern = fmt::format("\\b{}\\b", text);
-//        fmt::print("{}\n", pattern);
-        rgx_text = std::regex(pattern, rgx_flags);
+    if (ignore_case) {
+        express_dir = "(?i)" + express_dir;
+        express_file = "(?i)" + express_file;
     }
+    fmt::print("express dir: {}\n", express_dir);
+    fmt::print("express file: {}\n", express_file);
+
+    pattern_dir = express_dir;
+    pattern_file = express_file;
+
+//    return 0;
+//
+//    auto rgx_flags = std::regex_constants::ECMAScript;
+//    if (ignore_case)
+//        rgx_flags |= std::regex_constants::icase;
+//
+//    rgx_dir = std::regex(express_dir, rgx_flags);
+//    rgx_file = std::regex(express_file, rgx_flags);
+//    if (!text.empty()) {
+//        auto pattern = fmt::format("\\b{}\\b", text);
+////        fmt::print("{}\n", pattern);
+//        rgx_text = std::regex(pattern, rgx_flags);
+//    }
 
     tg.run([fpath] {
-        iterate_dir(fpath);
+        iterate_dir2(fpath);
     });
 
     auto dt = share::execution_timer([&] {

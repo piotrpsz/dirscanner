@@ -16,7 +16,8 @@ find_package(Threads REQUIRED)
 find_package(date REQUIRED)
 
 add_executable(dirscanner main.cpp
-        pointer_wrapper.h)
+        pcregex.cpp pcregex.h)
+
 add_subdirectory(share)
 add_subdirectory(clap)
 
@@ -28,4 +29,5 @@ target_link_libraries(dirscanner PUBLIC
         range-v3::meta range-v3::concepts range-v3::range-v3
         share
         clap
+        pcre2-8
 )
