@@ -35,8 +35,12 @@
 #include <fstream>
 #include <sstream>
 #include <memory>
+#include <semaphore>
 #include "clap/clap.h"
 #include "pcregex.h"
+
+constexpr int sema_count = 5;
+std::counting_semaphore<sema_count> sema{sema_count};
 
 tbb::task_group tg;
 std::atomic_uint64_t total_dir_counter{};
@@ -46,6 +50,8 @@ std::atomic_uint64_t matched_file_counter{};
 std::regex rgx_dir, rgx_file;
 std::optional<std::regex> rgx_text{};
 
+std::atomic_bool flag_dir{};
+std::atomic_bool flag_file{};
 std::string pattern_dir{};
 std::string pattern_file{};
 
@@ -227,10 +233,16 @@ void iterate_dir2(std::string const& dir) noexcept {
                 if ((fstat.st_mode & S_IFREG) == S_IFREG) {
                     // Perform in a dedicated tbb-task
                     tg.run([fp] {
-//                        fmt::print("{}\n", fp);
                         total_file_counter++;
-                        Regex rgx{pattern_file.c_str()};
-                        if (auto rs = rgx.run(fp.c_str(), fp.size()); !rs.empty()) {
+                        fmt::print("{}\n", fp);
+                        bool is_empty{};
+                        {
+                            sema.acquire();
+                            Regex rgx{pattern_file.c_str()};
+                            is_empty = rgx.run(fp.c_str(), fp.size()).empty();
+                            sema.release();
+                        }
+                        if (!is_empty) {
                             matched_file_counter++;
 //                            if (parse_file2(fp))
 //                                return; // return from task
@@ -242,8 +254,15 @@ void iterate_dir2(std::string const& dir) noexcept {
                 else if ((fstat.st_mode & S_IFDIR) == S_IFDIR) {
                     // Perform in a dedicated tbb-task
                     tg.run([fp] {
-                        Regex rgx{pattern_dir.c_str()};
-                        if (auto rs = rgx.run(fp.c_str(), fp.size()); !rs.empty()) {
+                        fmt::print("{}\n", fp);
+                        bool is_empty{};
+                        {
+                            sema.acquire();
+                            Regex rgx{pattern_dir.c_str()};
+                            is_empty = rgx.run(fp.c_str(), fp.size()).empty();
+                            sema.release();
+                        }
+                        if (!is_empty) {
                             matched_dir_counter++;
                             if (!quiet)
                                 fmt::print("{}\n", fp);
